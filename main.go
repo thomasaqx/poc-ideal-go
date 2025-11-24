@@ -66,7 +66,7 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	log.Println("Servidor iniciando na porta 8080...")
+	log.Println("Server start in http://localhost:8080...")
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
