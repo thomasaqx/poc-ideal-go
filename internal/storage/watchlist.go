@@ -1,22 +1,21 @@
 package storage
 
-import (
-	"sync"
-)
+import "sync"
 
-type WatchList struct {
+type Watchlist struct {
 	mu     sync.RWMutex
 	assets map[string]bool
 }
 
-func NewWatchList() *WatchList {
-	return &WatchList{
+func NewWatchlist() *Watchlist {
+	return &Watchlist{
 		assets: make(map[string]bool),
 	}
 }
 
-func (w *WatchList) Add(symbol string) bool {
-	w.mu.Lock() //block writer
+// Add inserts a symbol if it is not already present.
+func (w *Watchlist) Add(symbol string) bool {
+	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if w.assets[symbol] {
@@ -27,9 +26,9 @@ func (w *WatchList) Add(symbol string) bool {
 	return true
 }
 
-func (w *WatchList) GetAll() []string {
-	w.mu.RLock()         
-	defer w.mu.RUnlock() // unlock
+func (w *Watchlist) GetAll() []string {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
 
 	symbols := make([]string, 0, len(w.assets))
 	for symbol := range w.assets {
