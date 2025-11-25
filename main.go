@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -52,10 +55,29 @@ func main() {
 		log.Fatal("Erro: the environment variable YAHOO_API_KEY is not set.")
 	}
 
+	dsn := os.Getenv("MYSQL_DSN")
+	if dsn == "" {
+		log.Fatal("Erro: the environment variable MYSQL_DSN is not set.")
+	}
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		log.Fatalf("failed to open database connection: %v", err)
+	}
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		log.Fatalf("failed to ping database: %v", err)
+	}
+
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(time.Hour)
+
 	app := &application{
 		apiKey:    apiKey,
 		client:    client.NewYahooClient(apiKey),
-		watchlist: storage.NewWatchlist(),
+		watchlist: storage.NewWatchlist(db),
 	}
 
 	srv := &http.Server{
@@ -100,7 +122,14 @@ func (app *application) handleAddAssetToWatchlist(w http.ResponseWriter, r *http
 		return
 	}
 
-	if added := app.watchlist.Add(symbol); !added {
+	added, err := app.watchlist.Add(symbol)
+	if err != nil {
+		log.Printf("error adding %s to watchlist: %v", symbol, err)
+		errorJSON(w, http.StatusInternalServerError, "unable to store symbol")
+		return
+	}
+
+	if !added {
 		errorJSON(w, http.StatusConflict, "symbol already in watchlist")
 		return
 	}
@@ -111,7 +140,12 @@ func (app *application) handleAddAssetToWatchlist(w http.ResponseWriter, r *http
 }
 
 func (app *application) handleGetWatchlist(w http.ResponseWriter, r *http.Request) {
-	symbols := app.watchlist.GetAll()
+	symbols, err := app.watchlist.GetAll()
+	if err != nil {
+		log.Printf("error fetching watchlist: %v", err)
+		errorJSON(w, http.StatusInternalServerError, "unable to fetch watchlist")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string][]string{"symbols": symbols})
 }
 
