@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,9 +71,13 @@ func main() {
 		log.Fatalf("failed to ping database: %v", err)
 	}
 
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(time.Hour)
+	maxOpenConns := getEnvInt("MYSQL_MAX_OPEN_CONNS", 10)
+	maxIdleConns := getEnvInt("MYSQL_MAX_IDLE_CONNS", 5)
+	connMaxLifetime := getEnvDuration("MYSQL_CONN_MAX_LIFETIME", time.Hour)
+
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxIdleConns)
+	db.SetConnMaxLifetime(connMaxLifetime)
 
 	app := &application{
 		apiKey:    apiKey,
@@ -179,4 +184,30 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 
 func errorJSON(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+func getEnvInt(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 0 {
+		log.Printf("invalid value for %s (%s), using default %d", key, value, fallback)
+		return fallback
+	}
+	return n
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	dur, err := time.ParseDuration(value)
+	if err != nil {
+		log.Printf("invalid duration for %s (%s), using default %s", key, value, fallback)
+		return fallback
+	}
+	return dur
 }
