@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -52,10 +56,33 @@ func main() {
 		log.Fatal("Erro: the environment variable YAHOO_API_KEY is not set.")
 	}
 
+	dsn := os.Getenv("MYSQL_DSN")
+	if dsn == "" {
+		log.Fatal("Erro: the environment variable MYSQL_DSN is not set.")
+	}
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		log.Fatalf("failed to open database connection: %v", err)
+	}
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		log.Fatalf("failed to ping database: %v", err)
+	}
+
+	maxOpenConns := getEnvInt("MYSQL_MAX_OPEN_CONNS", 10)
+	maxIdleConns := getEnvInt("MYSQL_MAX_IDLE_CONNS", 5)
+	connMaxLifetime := getEnvDuration("MYSQL_CONN_MAX_LIFETIME", time.Hour)
+
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxIdleConns)
+	db.SetConnMaxLifetime(connMaxLifetime)
+
 	app := &application{
 		apiKey:    apiKey,
 		client:    client.NewYahooClient(apiKey),
-		watchlist: storage.NewWatchlist(),
+		watchlist: storage.NewWatchlist(db),
 	}
 
 	srv := &http.Server{
@@ -100,7 +127,14 @@ func (app *application) handleAddAssetToWatchlist(w http.ResponseWriter, r *http
 		return
 	}
 
-	if added := app.watchlist.Add(symbol); !added {
+	added, err := app.watchlist.Add(symbol)
+	if err != nil {
+		log.Printf("error adding %s to watchlist: %v", symbol, err)
+		errorJSON(w, http.StatusInternalServerError, "unable to store symbol")
+		return
+	}
+
+	if !added {
 		errorJSON(w, http.StatusConflict, "symbol already in watchlist")
 		return
 	}
@@ -111,7 +145,12 @@ func (app *application) handleAddAssetToWatchlist(w http.ResponseWriter, r *http
 }
 
 func (app *application) handleGetWatchlist(w http.ResponseWriter, r *http.Request) {
-	symbols := app.watchlist.GetAll()
+	symbols, err := app.watchlist.GetAll()
+	if err != nil {
+		log.Printf("error fetching watchlist: %v", err)
+		errorJSON(w, http.StatusInternalServerError, "unable to fetch watchlist")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string][]string{"symbols": symbols})
 }
 
@@ -145,4 +184,30 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 
 func errorJSON(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+func getEnvInt(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 0 {
+		log.Printf("invalid value for %s (%s), using default %d", key, value, fallback)
+		return fallback
+	}
+	return n
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	dur, err := time.ParseDuration(value)
+	if err != nil {
+		log.Printf("invalid duration for %s (%s), using default %s", key, value, fallback)
+		return fallback
+	}
+	return dur
 }

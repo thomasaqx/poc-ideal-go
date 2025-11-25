@@ -8,7 +8,6 @@ type QuoteResponse struct {
 	} `json:"quoteResponse"`
 }
 
-// Quote contains only the fields we expose to the API.
 type Quote struct {
 	Symbol               string  `json:"symbol"`
 	RegularMarketPrice   float64 `json:"regularMarketPrice"`
