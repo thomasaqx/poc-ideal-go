@@ -19,9 +19,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
 
-	"github.com/thomasaqx/poc-ideal-go.git/internal/client"
-	"github.com/thomasaqx/poc-ideal-go.git/internal/models"
-	"github.com/thomasaqx/poc-ideal-go.git/internal/storage"
+	"github.com/thomasaqx/poc-ideal-go/internal/client"
+	"github.com/thomasaqx/poc-ideal-go/internal/models"
+	"github.com/thomasaqx/poc-ideal-go/internal/storage"
 )
 
 var errSymbolNotFound = errors.New("symbol not found")
