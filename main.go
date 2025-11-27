@@ -81,7 +81,7 @@ func main() {
 	db.SetMaxIdleConns(maxIdleConns)
 	db.SetConnMaxLifetime(connMaxLifetime)
 
-	kafkaBroker := getEnvString("KAFKA_BROKER", "localhost:9092")
+	kafkaBroker := getEnvString("KAFKA_BROKER", "127.0.0.1:9092")
 	kafkaTopic := getEnvString("KAFKA_TOPIC", "watchlist-topic")
 	kafkaProducer := queue.NewKafkaProducer(kafkaBroker, kafkaTopic)
 	defer kafkaProducer.Close()
@@ -242,7 +242,6 @@ func (app *application) handleAddAssetToWatchlist(w http.ResponseWriter, r *http
 	writeJSON(w, http.StatusAccepted, map[string]string{
 		"message": fmt.Sprintf("Asset %s (Price: %.2f) sent to queue", quote.Symbol, quote.RegularMarketPrice),
 	})
-
 
 	if app.producer != nil {
 		if err := app.producer.Publish(symbol); err != nil {
