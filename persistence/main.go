@@ -53,6 +53,7 @@ func main() {
 
 	log.Println("Persistence Service started (JSON). Waiting...")
 
+	//consumer infinite loop
 	for {
 		m, err := r.ReadMessage(context.Background())
 		if err != nil {
@@ -60,7 +61,7 @@ func main() {
 			continue
 		}
 
-		// Try to unmarshal the received JSON into an object
+		// unmarshal the received JSON into an object
 		var quote Quote
 		err = json.Unmarshal(m.Value, &quote)
 		if err != nil {
@@ -71,6 +72,7 @@ func main() {
 
 		fmt.Printf("Processing: %s | Price: %.2f\n", quote.Symbol, quote.RegularMarketPrice)
 
+		// Persiste
 		err = saveToDB(db, quote.Symbol)
 		if err != nil {
 			log.Printf("Error saving %s: %v", quote.Symbol, err)

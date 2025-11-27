@@ -204,6 +204,7 @@ func getEnvString(key, fallback string) string {
 	return value
 }
 
+//code review
 func (app *application) handleAddAssetToWatchlist(w http.ResponseWriter, r *http.Request) {
 	symbol := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "symbol")))
 	if symbol == "" {
@@ -211,6 +212,7 @@ func (app *application) handleAddAssetToWatchlist(w http.ResponseWriter, r *http
 		return
 	}
 
+	// fetch data from Yahoo Finance API
 	quoteResponse, err := app.client.GetQuote(symbol)
 	if err != nil {
 		log.Printf("error fetching quote for %s: %v", symbol, err)
@@ -225,6 +227,7 @@ func (app *application) handleAddAssetToWatchlist(w http.ResponseWriter, r *http
 
 	quote := quoteResponse.QuoteResponse.Result[0]
 
+	// marshal the quote to JSON
 	jsonMessage, err := json.Marshal(quote)
 	if err != nil {
 		log.Printf("error marshalling quote to json: %v", err)
@@ -232,6 +235,7 @@ func (app *application) handleAddAssetToWatchlist(w http.ResponseWriter, r *http
 		return
 	}
 
+	//send json to kafka
 	err = app.producer.Publish(string(jsonMessage))
 	if err != nil {
 		log.Printf("error publishing to kafka: %v", err)
@@ -239,36 +243,8 @@ func (app *application) handleAddAssetToWatchlist(w http.ResponseWriter, r *http
 		return
 	}
 
+	//return success response
 	writeJSON(w, http.StatusAccepted, map[string]string{
 		"message": fmt.Sprintf("Asset %s (Price: %.2f) sent to queue", quote.Symbol, quote.RegularMarketPrice),
-	})
-
-	if app.producer != nil {
-		if err := app.producer.Publish(symbol); err != nil {
-			log.Printf("error publishing %s to kafka: %v", symbol, err)
-			errorJSON(w, http.StatusInternalServerError, "error processing request")
-			return
-		}
-
-		writeJSON(w, http.StatusAccepted, map[string]string{
-			"message": fmt.Sprintf("request to add %s sent to queue", symbol),
-		})
-		return
-	}
-
-	added, err := app.watchlist.Add(symbol)
-	if err != nil {
-		log.Printf("error adding %s to watchlist: %v", symbol, err)
-		errorJSON(w, http.StatusInternalServerError, "unable to store symbol")
-		return
-	}
-
-	if !added {
-		errorJSON(w, http.StatusConflict, "symbol already in watchlist")
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, map[string]string{
-		"message": fmt.Sprintf("symbol %s added to watchlist", symbol),
 	})
 }
