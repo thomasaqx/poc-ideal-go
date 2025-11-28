@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -18,11 +19,14 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
+	"google.golang.org/grpc"
 
 	"github.com/thomasaqx/poc-ideal-go/internal/client"
+	grpcService "github.com/thomasaqx/poc-ideal-go/internal/grpc"
 	"github.com/thomasaqx/poc-ideal-go/internal/models"
 	"github.com/thomasaqx/poc-ideal-go/internal/queue"
 	"github.com/thomasaqx/poc-ideal-go/internal/storage"
+	pb "github.com/thomasaqx/poc-ideal-go/proto"
 )
 
 var errSymbolNotFound = errors.New("symbol not found")
@@ -86,12 +90,17 @@ func main() {
 	kafkaProducer := queue.NewKafkaProducer(kafkaBroker, kafkaTopic)
 	defer kafkaProducer.Close()
 
+	yahooClient := client.NewYahooClient(apiKey)
+	watchlistRepo := storage.NewWatchlist(db)
 	app := &application{
 		apiKey:    apiKey,
-		client:    client.NewYahooClient(apiKey),
-		watchlist: storage.NewWatchlist(db),
+		client:    yahooClient,
+		watchlist: watchlistRepo,
 		producer:  kafkaProducer,
 	}
+
+	grpcSrv := grpcService.NewGRPCServer(yahooClient, watchlistRepo, kafkaProducer)
+	go startGRPCServer(grpcSrv)
 
 	srv := &http.Server{
 		Addr:         ":8080",
@@ -101,9 +110,24 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	log.Println("Server start in http://localhost:8080...")
+	log.Println("HTTP server start in http://localhost:8080...")
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
+	}
+}
+
+func startGRPCServer(server pb.AssetServiceServer) {
+	listenAddr := getEnvString("GRPC_ADDR", ":50051")
+	listener, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		log.Fatalf("failed to listen on gRPC port %s: %v", listenAddr, err)
+	}
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterAssetServiceServer(grpcServer, server)
+	log.Printf("gRPC server started on %s", listenAddr)
+	if err := grpcServer.Serve(listener); err != nil {
+		log.Fatalf("failed to serve gRPC: %v", err)
 	}
 }
 
@@ -204,7 +228,7 @@ func getEnvString(key, fallback string) string {
 	return value
 }
 
-//code review
+// code review
 func (app *application) handleAddAssetToWatchlist(w http.ResponseWriter, r *http.Request) {
 	symbol := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "symbol")))
 	if symbol == "" {

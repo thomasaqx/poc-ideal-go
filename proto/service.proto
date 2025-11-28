@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+option go_package = "./pb";
+
+package service;
+
+// O Serviço Principal
+service AssetService {
+  // GET /api/assets/{symbol}
+  rpc GetAssetPrice (AssetRequest) returns (AssetPriceResponse);
+  
+  // POST /api/assets/watchlist/{symbol}
+  rpc AddAssetToWatchlist (AssetRequest) returns (SuccessResponse);
+  
+  //GET /api/assets/watchlist
+  rpc GetWatchlist (Empty) returns (WatchlistResponse);
+}
+
+
+message AssetRequest {
+  string symbol = 1;
+}
+
+message AssetPriceResponse {
+  string symbol = 1;
+  double price = 2;
+}
+
+message SuccessResponse {
+  string message = 1;
+}
+
+message WatchlistResponse {
+  repeated string symbols = 1; 
+}
+
+message Empty {}
